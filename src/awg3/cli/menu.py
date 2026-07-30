@@ -923,6 +923,51 @@ class Menu:
                 )
                 print(f"  {colour}{line[:160]}{N}")
 
+    def self_update(self) -> None:
+        """Обновляет тулзу из репозитория через сохранённый установщик."""
+        head("Обновление с GitHub")
+        print(f"  {D}{'Репозиторий':<16}{N} {paths.REPO_URL}")
+        print(f"  {D}{'Ветка':<16}{N} {paths.REPO_BRANCH}")
+        print(f"  {D}{'Версия сейчас':<16}{N} {__version__}")
+        print()
+        info("будут обновлены: папка проекта, Python-ядро, бинарь, юнит")
+        info(f"{paths.CONF_DIR} не трогается — клиенты и ключи сохранятся")
+        print()
+        if not confirm("Обновить?"):
+            info("отменено")
+            return
+
+        import subprocess
+
+        if paths.INSTALLER.is_file():
+            command = ["bash", str(paths.INSTALLER), "--update"]
+            info(f"запускаю {paths.INSTALLER}")
+        else:
+            url = paths.installer_raw_url()
+            warn(f"локальной копии нет — тяну {url}")
+            command = ["bash", "-c", f'bash <(curl -fsSL "{url}") --update']
+
+        print()
+        try:
+            result = subprocess.run(command, timeout=1800, check=False)
+        except FileNotFoundError as exc:
+            err(f"не запустить установщик: {exc}")
+            return
+        except subprocess.TimeoutExpired:
+            err("обновление не уложилось в 30 минут — прервано")
+            return
+
+        print()
+        if result.returncode != 0:
+            err(f"установщик завершился с кодом {result.returncode}")
+            info("подробности выше; конфигурация не тронута")
+            return
+
+        ok("обновление завершено")
+        warn("перезапусти меню, чтобы подхватить новый код: выход (0), затем sudo awg3")
+        if self.backend.is_running():
+            info("интерфейс продолжает работать, клиенты не отвалились")
+
     # ── полное удаление ─────────────────────────────────────────────
 
     def purge(self) -> None:
@@ -1014,12 +1059,13 @@ class Menu:
             print(f"  {G}12{N} Бекап и восстановление")
             print(f"  {G}13{N} Журнал (последние 50)")
             print(f"  {R}14{N} Полное удаление конфигурации")
+            print(f"  {G}15{N} Обновление с GitHub")
             print()
             print(f"  {D}0{N}  Выход")
             print()
 
             try:
-                choice = input(f"  Выбор [0-14]: ").strip()
+                choice = input(f"  Выбор [0-15]: ").strip()
             except (EOFError, KeyboardInterrupt):
                 print()
                 return 0
@@ -1039,6 +1085,7 @@ class Menu:
                 "12": self.backup_menu,
                 "13": self.show_logs,
                 "14": self.purge,
+                "15": self.self_update,
             }
 
             if choice == "0":
