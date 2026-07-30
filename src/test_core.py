@@ -218,6 +218,21 @@ builtins.input = _raise
 check("EOF считается отказом, не падением", confirm("тест") is False)
 builtins.input = _real_input
 
+print("── выбор подсети ──")
+import types as _t
+_real_run = network._run
+network._run = lambda a, check=True: _t.SimpleNamespace(
+    returncode=0, stdout="default via 10.0.0.1 dev eth0\n10.77.0.0/24 dev docker0\n", stderr="")
+_nets = {network.pick_free_subnet() for _ in range(60)}
+_octets = {int(n.split(".")[1]) for n in _nets}
+check("октеты в диапазоне 33-188", all(33 <= o <= 188 for o in _octets))
+check("третий и четвёртый октет нулевые", all(n.endswith(".0.0/24") for n in _nets))
+check("занятая маршрутом сеть не выдаётся", "10.77.0.0/24" not in _nets)
+check("разнообразие: больше 30 различных из 60", len(_nets) > 30)
+check("исключение через exclude работает",
+      network.pick_free_subnet(exclude={"10.50.0.0/24"}) != "10.50.0.0/24")
+network._run = _real_run
+
 print("── network: разбор правил ──")
 from awg3.core import network
 r = network._split_rule('-D POSTROUTING -s 10.200.0.0/24 -o eth0 -m comment '
