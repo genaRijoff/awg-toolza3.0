@@ -141,6 +141,24 @@ class Menu:
                     data[key.strip()] = value.strip()
         return data
 
+    def _save_reserved(self, iface: str, port: int, subnet: str, address: str) -> None:
+        """Обновляет reserved.env, чтобы установщик и удаление знали актуальное."""
+        target = paths.CONF_DIR / "reserved.env"
+        content = (
+            "# Обновлено при создании сервера.\n"
+            f"AWG3_IFACE={iface}\n"
+            f"AWG3_PORT={port}\n"
+            f"AWG3_SUBNET={subnet}\n"
+            f"AWG3_ADDRESS={address}\n"
+            f"AWG3_ROUTE_TABLE={paths.ROUTE_TABLE}\n"
+        )
+        try:
+            paths.CONF_DIR.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            target.chmod(0o600)
+        except OSError as exc:
+            logger.warning("Не записать %s: %s", target, exc)
+
     def _allowed_uapi_keys(self) -> set[str]:
         return {key.uapi for key in ALL_KEYS}
 
@@ -282,9 +300,17 @@ class Menu:
 
         reserved = self._reserved()
         iface = reserved.get("AWG3_IFACE", paths.DEFAULT_IFACE)
-        subnet = reserved.get("AWG3_SUBNET", paths.DEFAULT_CLIENT_NET)
-        address = reserved.get("AWG3_ADDRESS", "10.200.0.1/24")
         port_default = reserved.get("AWG3_PORT", "51820")
+
+        # Подсеть выбираем заново, а не берём из reserved.env: пересоздание
+        # сервера — это новая генерация всего, и оставлять прежнюю сеть
+        # означало бы, что она навсегда фиксируется моментом установки.
+        try:
+            subnet = network.pick_free_subnet()
+        except network.NetworkError as exc:
+            warn(f"не выбрать подсеть автоматически: {exc}")
+            subnet = reserved.get("AWG3_SUBNET", paths.DEFAULT_CLIENT_NET)
+        address = f"{subnet.split('/')[0].rsplit('.', 1)[0]}.1/24"
 
         endpoint = self._detect_endpoint()
         if not endpoint:
@@ -371,6 +397,7 @@ class Menu:
             err(str(exc))
             return
 
+        self._save_reserved(iface, port, subnet, address)
         self.backend = GoBackend(iface=iface)
         ok(f"сервер создан: {iface}, порт {port}, профиль {profile_name}")
         if use_awg3:
