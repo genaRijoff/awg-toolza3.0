@@ -7,6 +7,14 @@
 Ставится **рядом с AWG 2.0** и не задевает его: свой префикс, своя таблица
 маршрутизации, правила `iptables` удаляются адресно по тегу.
 
+<br>
+
+[![Boosty](https://img.shields.io/badge/Boosty-Поддержать-F15F2C?style=for-the-badge&logo=boost&logoColor=white)](https://boosty.to/awgtoolza/donate)
+[![YooMoney](https://img.shields.io/badge/YooMoney-Поддержать-8B3FFC?style=for-the-badge&logo=yandex&logoColor=white)](https://yoomoney.ru/to/4100119521619579)
+
+</div>
+
+
 ## Установка
 
 ```bash
