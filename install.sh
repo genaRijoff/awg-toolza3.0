@@ -50,7 +50,7 @@ RESERVED_ENV="${CONF_DIR}/reserved.env"
 GO_REPO="https://github.com/amnezia-vpn/amneziawg-go"
 # Репозиторий самой тулзы. Нужен для однокомандной установки, когда скрипт
 # скачан отдельно и пакета awg3/ рядом нет.
-AWG3_REPO="${AWG3_REPO:-https://github.com/pumbaX/awg3}"
+AWG3_REPO="${AWG3_REPO:-https://github.com/pumbaX/awg-toolza3.0}"
 AWG3_BRANCH="${AWG3_BRANCH:-main}"
 # Папка проекта на сервере. Скачивается один раз и дальше обновляется
 # на месте: и установщик, и --update работают с ней, а не с тем, что
