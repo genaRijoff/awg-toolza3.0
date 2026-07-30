@@ -135,7 +135,7 @@ def probe_uapi_keys(binary_log_level: str = "error") -> ProbeReport:
 
     results: list[ProbeResult] = []
     baseline_ok = True
-    baseline_detail = "S1-S4 >= 8 выставлены"
+    baseline_detail = "Jc/Jmin/Jmax и S1-S4 выставлены"
 
     try:
         backend.start()
