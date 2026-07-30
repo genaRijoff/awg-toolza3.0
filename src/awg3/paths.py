@@ -37,10 +37,9 @@ LOG_FILE = _env_path("AWG3_LOG", "/var/log/awg3.log")
 BACKUP_DIR = _env_path("AWG3_BACKUP_DIR", str(Path.home() / "awg3_backup"))
 
 # ── Сетевые дефолты, разведённые с AWG 2.0 ──────────────────────────
-# awg2.sh предлагает 10.100/10.101/10.102/10.44.5 либо случайную 10.x.x.0/24,
-# поэтому берём диапазон, которого в его списке нет. Реальная проверка на
-# пересечение делается в preflight по фактическому awg0.conf.
-DEFAULT_CLIENT_NET = "10.200.0.0/24"
+# Запасное значение на случай, если reserved.env потерян: реальную подсеть
+# выбирает установщик случайно из 10.33-10.188 и кладёт в reserved.env.
+DEFAULT_CLIENT_NET = "10.99.0.0/24"
 DEFAULT_IFACE = "awg1"
 
 # Таблица policy-routing. AWG 2.0 использует 200 и делает по ней
@@ -50,6 +49,19 @@ ROUTE_TABLE = int(os.environ.get("AWG3_ROUTE_TABLE", "210"))
 # Тег для правил iptables. Удаление всегда адресное по комментарию,
 # никаких -F по цепочкам.
 IPTABLES_TAG = "awg3"
+
+# Откуда обновляться. Копия установщика лежит рядом с проектом, но если её
+# нет (например, папку восстановили из бекапа), берём с GitHub.
+REPO_URL = os.environ.get("AWG3_REPO", "https://github.com/pumbaX/awg-toolza3.0")
+REPO_BRANCH = os.environ.get("AWG3_BRANCH", "main")
+INSTALLER = PREFIX / "install.sh"
+
+
+def installer_raw_url() -> str:
+    """Прямая ссылка на install.sh в репозитории."""
+    base = REPO_URL.rstrip("/").replace("github.com", "raw.githubusercontent.com")
+    return f"{base}/{REPO_BRANCH}/install.sh"
+
 
 # Пути AWG 2.0 — только для чтения в preflight, никогда не для записи.
 AWG2_SERVER_CONF = Path("/etc/amnezia/amneziawg/awg0.conf")
