@@ -129,13 +129,38 @@ subnets_conflict() {
 	[[ -n "${1:-}" && "$1" == "${2:-}" ]]
 }
 
-# pick_subnet TAKEN -> свободная /24 из нашего пула.
+# Границы второго октета для случайной подсети. Диапазон подобран так, чтобы
+# разойтись и с типовыми домашними сетями (10.0.x, 10.1.x), и с тем, что
+# предлагает AWG 2.0 (10.100-102, 10.44.5).
+SUBNET_OCTET_MIN=33
+SUBNET_OCTET_MAX=188
+
+# subnet_in_use NET -> 0, если для сети уже есть маршрут на хосте.
+subnet_in_use() {
+	local net="${1:-}"
+	[[ -n "$net" ]] || return 1
+	command -v ip >/dev/null 2>&1 || return 1
+	ip -4 route show 2>/dev/null | grep -qE "^${net}/|[[:space:]]${net}/"
+}
+
+# pick_subnet TAKEN -> случайная свободная /24 вида 10.X.0.0.
+#
+# Случайная, а не из фиксированного списка: одинаковая подсеть на всех
+# установках — это лишняя зацепка и гарантированный конфликт, если человек
+# поднимет два сервера и захочет соединить их между собой.
 pick_subnet() {
-	local taken="${1:-}" candidate
-	for candidate in 10.200.0.0 10.201.0.0 10.202.0.0 10.203.0.0; do
-		subnets_conflict "$candidate" "$taken" || { echo "$candidate"; return 0; }
+	local taken="${1:-}" attempt octet candidate
+	local span=$((SUBNET_OCTET_MAX - SUBNET_OCTET_MIN + 1))
+	for attempt in {1..60}; do
+		octet=$((RANDOM % span + SUBNET_OCTET_MIN))
+		candidate="10.${octet}.0.0"
+		subnets_conflict "$candidate" "$taken" && continue
+		subnet_in_use "$candidate" && continue
+		echo "$candidate"
+		return 0
 	done
-	echo "10.209.0.0"
+	err "не нашёл свободную подсеть за 60 попыток"
+	return 1
 }
 
 # port_in_use PORT -> 0, если UDP-порт занят (по выводу ss).
@@ -544,50 +569,45 @@ build_backend() {
 
 # Раскладывает папку проекта в ${PREFIX}/src.
 #
-# Три источника, по убыванию приоритета:
-#   1. src/ рядом со скриптом  — установка из клона репозитория;
-#   2. уже скачанная ${SRC_DIR} — обновляем через git pull;
-#   3. клонируем репозиторий    — однокомандная установка, когда curl
-#      принёс только install.sh.
+# Два источника:
+#   1. src/ рядом со скриптом — установка из клона репозитория;
+#   2. свежий клон           — однокомандная установка и любое обновление.
+#
+# Ветки «обновить существующую папку через git pull» намеренно нет: в
+# ${SRC_DIR} лежит содержимое src/, а .git от корня репозитория восстановил бы
+# туда весь корень и создал вложенный src/src. Клон поверхностный и дешёвый,
+# а состояния после него не остаётся.
 sync_sources() {
 	step "Папка проекта"
 
+	local source=""
 	if [[ -d "${SCRIPT_DIR}/src/awg3" ]]; then
-		mkdir -p "$PREFIX"
-		if [[ "$(cd "${SCRIPT_DIR}/src" && pwd)" == "$SRC_DIR" ]]; then
+		source="${SCRIPT_DIR}/src"
+		if [[ "$(cd "$source" && pwd)" == "$SRC_DIR" ]]; then
 			ok "работаю прямо в ${SRC_DIR}"
 			return 0
 		fi
-		safe_rm_tree "$SRC_DIR" 2>/dev/null || true
-		cp -r "${SCRIPT_DIR}/src" "$SRC_DIR"
-		ok "скопировано из ${SCRIPT_DIR}/src -> ${SRC_DIR}"
-		return 0
+		info "беру из ${source}"
+	else
+		info "тяну ${AWG3_REPO} (${AWG3_BRANCH})"
+		local clone="/tmp/awg3-repo"
+		if [[ "$clone" == /tmp/* ]]; then rm -rf -- "$clone"; fi
+		git clone --depth 1 --branch "$AWG3_BRANCH" "$AWG3_REPO" "$clone" >/dev/null 2>&1 ||
+			{ err "не удалось склонировать ${AWG3_REPO}"; exit 1; }
+		[[ -d "${clone}/src/awg3" ]] ||
+			{ err "в репозитории нет каталога src/awg3/"; exit 1; }
+		source="${clone}/src"
 	fi
-
-	if [[ -d "${SRC_DIR}/.git" ]]; then
-		info "обновляю ${SRC_DIR}"
-		if ( cd "$SRC_DIR" && git fetch --depth 1 origin "$AWG3_BRANCH" >/dev/null 2>&1 &&
-			git reset --hard "origin/${AWG3_BRANCH}" >/dev/null 2>&1 ); then
-			ok "обновлено до свежего ${AWG3_BRANCH}"
-			return 0
-		fi
-		warn "git pull не удался — склонирую заново"
-		safe_rm_tree "$SRC_DIR" 2>/dev/null || true
-	fi
-
-	info "тяну ${AWG3_REPO} (${AWG3_BRANCH})"
-	local clone="/tmp/awg3-repo"
-	if [[ "$clone" == /tmp/* ]]; then rm -rf -- "$clone"; fi
-	git clone --depth 1 --branch "$AWG3_BRANCH" "$AWG3_REPO" "$clone" >/dev/null 2>&1 ||
-		{ err "не удалось склонировать ${AWG3_REPO}"; exit 1; }
-	[[ -d "${clone}/src/awg3" ]] ||
-		{ err "в репозитории нет каталога src/awg3/"; exit 1; }
 
 	mkdir -p "$PREFIX"
+	# Старую папку сносим целиком: остатки прошлых версий, включая случайно
+	# оставшийся .git, не должны пережить обновление.
 	safe_rm_tree "$SRC_DIR" 2>/dev/null || true
-	cp -r "${clone}/src" "$SRC_DIR"
-	cp -r "${clone}/.git" "${SRC_DIR}/.git" 2>/dev/null || true
-	if [[ "$clone" == /tmp/* ]]; then rm -rf -- "$clone"; fi
+	cp -r "$source" "$SRC_DIR"
+	if [[ -d "${SRC_DIR}/.git" ]]; then
+		safe_rm_tree "${SRC_DIR}/.git" 2>/dev/null || rm -rf -- "${SRC_DIR}/.git"
+	fi
+	if [[ -d /tmp/awg3-repo ]]; then rm -rf -- /tmp/awg3-repo; fi
 	ok "папка проекта в ${SRC_DIR}"
 }
 
@@ -628,6 +648,13 @@ exec env PYTHONPATH="${LIB_DIR}" "${VENV_DIR}/bin/python" -m awg3 "\$@"
 EOF
 	chmod 0755 "$CLI_WRAPPER"
 	ok "меню -> ${CLI_WRAPPER}"
+
+	# Копия установщика рядом с проектом: пункт «Обновление» в меню запускает
+	# именно её, без повторного curl. Если копии нет — меню сходит на GitHub.
+	if [[ -f "${SCRIPT_DIR}/install.sh" ]]; then
+		install -m 0755 "${SCRIPT_DIR}/install.sh" "${PREFIX}/install.sh"
+		ok "установщик сохранён -> ${PREFIX}/install.sh"
+	fi
 
 	touch "$LOG_FILE"; chmod 640 "$LOG_FILE"
 }
@@ -731,6 +758,9 @@ summary() {
 	echo -e "${G}║          AWG3 — установка завершена          ║${N}"
 	echo -e "${G}╚══════════════════════════════════════════════╝${N}"
 	echo ""
+	local version
+	version="$(awk -F'"' '/^__version__/{print $2}' "${SRC_DIR}/awg3/__init__.py" 2>/dev/null)"
+	[[ -n "$version" ]] && echo -e "  ${W}Версия:${N} ${version}" && echo ""
 	[[ -r "$RESERVED_ENV" ]] && sed 's/^/  /' "$RESERVED_ENV" | grep -v '^  #'
 	echo ""
 	echo -e "  ${W}Дальше:${N}"
