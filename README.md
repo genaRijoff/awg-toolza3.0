@@ -104,6 +104,15 @@ python3 test_core.py    # 52
 
 Ни один не требует сервера или сети.
 
-## Лицензия
+<div align="center">
 
-MIT
+*Отдельная благодарность [AWG-Manager](https://t.me/awgmanager)*
+
+<br>
+
+*Сообщество [AWG-Toolza](https://t.me/awgToolza)*
+
+**AWG Toolza3.0* · MIT License
+
+</div>
+
