@@ -67,10 +67,24 @@ check     "одинаковые конфликтуют"    subnets_conflict "10.
 check_not "разные не конфликтуют"     subnets_conflict "10.200.0.0" "10.100.0.0"
 check_not "пустая не конфликтует"     subnets_conflict "" "10.100.0.0"
 
-echo "── pick_subnet (обход подсети AWG 2.0) ──"
-check_eq  "свободно -> первая из пула" "10.200.0.0" "$(pick_subnet '10.100.0.0')"
-check_eq  "занята 10.200 -> следующая" "10.201.0.0" "$(pick_subnet '10.200.0.0')"
-check_eq  "AWG2 на 10.44.5 -> 10.200"  "10.200.0.0" "$(pick_subnet '10.44.5.0')"
+echo "── pick_subnet (случайная, обходит AWG 2.0) ──"
+SEEN=""
+DUP=0
+for _ in $(seq 1 40); do
+	NET="$(pick_subnet '10.100.0.0')"
+	OCT="$(echo "$NET" | cut -d. -f2)"
+	if ((OCT < 33 || OCT > 188)); then echo "  FAIL октет $OCT вне 33..188"; FAIL=$((FAIL+1)); fi
+	if [[ "$NET" == "10.100.0.0" ]]; then echo "  FAIL выдана занятая сеть"; FAIL=$((FAIL+1)); fi
+	case "$SEEN" in *"$NET"*) DUP=$((DUP+1)) ;; esac
+	SEEN="$SEEN $NET"
+done
+check_eq "40 генераций: третий и четвёртый октет нулевые" "" "$(echo $SEEN | tr ' ' '\n' | grep -v '\.0\.0$' | head -1)"
+if ((DUP < 35)); then
+	echo "  OK   разнообразие: $((40-DUP)) различных из 40"; PASS=$((PASS+1))
+else
+	echo "  FAIL почти все одинаковые"; FAIL=$((FAIL+1))
+fi
+check_eq "занятая сеть не выдаётся" "" "$(echo $SEEN | tr ' ' '\n' | grep -x '10.100.0.0' | head -1)"
 
 echo "── awg2_field (чтение чужого конфига) ──"
 TMP="$(mktemp)"
@@ -92,7 +106,13 @@ rm -f "$TMP"
 echo "── сквозной сценарий: AWG 2.0 на 10.100.0.0:41300 ──"
 NET="$(cidr_network "$(awg2_field <(printf 'Address = 10.100.0.1/24\n') Address)")"
 check_eq  "его сеть распознана"   "10.100.0.0" "$NET"
-check_eq  "наша сеть не пересеклась" "10.200.0.0" "$(pick_subnet "$NET")"
+OURS="$(pick_subnet "$NET")"
+OCT="$(echo "$OURS" | cut -d. -f2)"
+if [[ "$OURS" != "$NET" ]] && ((OCT >= 33 && OCT <= 188)); then
+	echo "  OK   наша сеть ${OURS} не пересеклась с ${NET}"; PASS=$((PASS+1))
+else
+	echo "  FAIL получили ${OURS} при занятой ${NET}"; FAIL=$((FAIL+1))
+fi
 
 echo "── gomod_go_version / check_go_toolchain ──"
 GOMOD="$(mktemp)"
