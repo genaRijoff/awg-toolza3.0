@@ -10,7 +10,7 @@
 ## Установка
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/USER/awg3/main/install.sh) --install
+bash <(curl -fsSL https://raw.githubusercontent.com/pumbaX/awg3/main/install.sh) --install
 sudo awg3-probe   # проверить, что бинарь умеет AWG 3
 sudo awg3         # меню
 ```
