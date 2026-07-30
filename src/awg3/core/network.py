@@ -57,6 +57,42 @@ def default_wan_interface() -> str:
     return match.group(1)
 
 
+# Границы второго октета. Те же, что в install.sh: расходимся и с типовыми
+# домашними сетями (10.0.x, 10.1.x), и с тем, что предлагает AWG 2.0.
+SUBNET_OCTET_MIN = 33
+SUBNET_OCTET_MAX = 188
+
+
+def subnet_in_use(network_addr: str) -> bool:
+    """Есть ли на хосте маршрут для этой сети."""
+    try:
+        proc = _run(["ip", "-4", "route", "show"], check=False)
+    except NetworkError:
+        return False
+    if proc.returncode != 0:
+        return False
+    return re.search(rf"(^|\s){re.escape(network_addr)}/", proc.stdout, re.M) is not None
+
+
+def pick_free_subnet(exclude: set[str] | None = None) -> str:
+    """Случайная свободная /24 вида 10.X.0.0/24.
+
+    Случайная, а не фиксированная: одинаковая подсеть на всех установках —
+    лишняя зацепка и гарантированный конфликт, если поднять два сервера и
+    захотеть связать их между собой.
+    """
+    import secrets
+
+    rand = secrets.SystemRandom()
+    blocked = {addr.split("/")[0] for addr in (exclude or set())}
+    for _ in range(60):
+        candidate = f"10.{rand.randint(SUBNET_OCTET_MIN, SUBNET_OCTET_MAX)}.0.0"
+        if candidate in blocked or subnet_in_use(candidate):
+            continue
+        return f"{candidate}/24"
+    raise NetworkError("не нашлось свободной подсети за 60 попыток")
+
+
 def local_source_ip() -> str | None:
     """Адрес, с которого сервер уходит наружу.
 
