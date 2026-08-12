@@ -17,28 +17,34 @@
 
 ## Установка
 
-Нужен root. Если ты уже под root-шеллом:
+Одна команда, годится и под root, и под обычным пользователем с `sudo`:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/genaRijoff/awg-toolza3.0/main/install.sh) --install
-awg3-probe   # проверить, что бинарь умеет AWG 3
-awg3         # меню
+curl -fsSL https://raw.githubusercontent.com/genaRijoff/awg-toolza3.0/main/install.sh -o /tmp/awg3-install.sh && $([ "$(id -u)" -eq 0 ] || echo sudo) bash /tmp/awg3-install.sh --install
 ```
 
-Если заходишь обычным пользователем и повышаешься через `sudo` — скачай
-скрипт файлом. Приписать `sudo` к строке выше не выйдет: подстановка
-процесса `<(...)` создаёт `/dev/fd/63` в твоей оболочке, а sudo перед
-запуском команды закрывает все дескрипторы старше 2 (`closefrom`, по
-умолчанию 3), и bash не сможет открыть собственный скрипт.
+Дальше:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/genaRijoff/awg-toolza3.0/main/install.sh -o /tmp/awg3-install.sh
-sudo bash /tmp/awg3-install.sh --install
-sudo awg3-probe
-sudo awg3
+sudo awg3-probe   # проверить, что бинарь умеет AWG 3
+sudo awg3         # меню
 ```
 
-Ubuntu 24.04+ или Debian 12+, KVM.
+Под root `sudo` можно опустить — а если его в системе просто нет, то и нужно.
+
+Ubuntu 24.04+ или Debian 12+, KVM, root.
+
+<details>
+<summary>Почему не однострочник с <code>bash &lt;(curl ...)</code></summary>
+
+Установщику нужен root, а приписать к такой строке `sudo` нельзя:
+подстановка процесса `<(...)` создаёт `/dev/fd/63` в **твоей** оболочке,
+а sudo перед запуском команды закрывает все дескрипторы старше 2
+(`closefrom`, по умолчанию 3). Bash под root получает путь, которого у
+него уже нет, и не может прочитать собственный скрипт. Поэтому скрипт
+сначала кладётся файлом, и только потом запускается — при неудачной
+загрузке `&&` не пустит установку дальше.
+</details>
 
 ## Меню
 
