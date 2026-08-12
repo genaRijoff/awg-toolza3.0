@@ -17,13 +17,28 @@
 
 ## Установка
 
+Нужен root. Если ты уже под root-шеллом:
+
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/genaRijoff/awg-toolza3.0/main/install.sh) --install
-sudo awg3-probe   # проверить, что бинарь умеет AWG 3
-sudo awg3         # меню
+awg3-probe   # проверить, что бинарь умеет AWG 3
+awg3         # меню
 ```
 
-Ubuntu 24.04+ или Debian 12+, KVM, root.
+Если заходишь обычным пользователем и повышаешься через `sudo` — скачай
+скрипт файлом. Приписать `sudo` к строке выше не выйдет: подстановка
+процесса `<(...)` создаёт `/dev/fd/63` в твоей оболочке, а sudo перед
+запуском команды закрывает все дескрипторы старше 2 (`closefrom`, по
+умолчанию 3), и bash не сможет открыть собственный скрипт.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/genaRijoff/awg-toolza3.0/main/install.sh -o /tmp/awg3-install.sh
+sudo bash /tmp/awg3-install.sh --install
+sudo awg3-probe
+sudo awg3
+```
+
+Ubuntu 24.04+ или Debian 12+, KVM.
 
 ## Меню
 
