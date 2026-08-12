@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from .. import __version__, paths
@@ -1063,80 +1064,117 @@ class Menu:
             print(f"  Сервер    : {mark}  {D}{server.iface}:{server.listen_port} "
                   f"{server.profile}/{awg3}, клиентов {clients}{N}")
 
-    def run(self) -> int:
+    def _categories(self) -> list[tuple[str, bool, list[tuple[str, Callable[[], None], bool]]]]:
+        """Разделы главного меню: заголовок, опасен ли раздел целиком, пункты.
+
+        Каждый пункт — (подпись, действие, опасен ли) — флаг живёт на самом
+        пункте, а не в отдельном множестве индексов: вставка нового пункта
+        не может молча сдвинуть подсветку на чужое действие.
+        """
+        return [
+            ("Сервер", False, [
+                ("Создать сервер", self.create_server, False),
+                ("Показать конфигурацию", self.show_server, False),
+                ("Запустить интерфейс", self.start_interface, False),
+                ("Остановить интерфейс", self.stop_interface, False),
+                ("Состояние", self.show_status, False),
+                ("Перегенерировать обфускацию", self.regenerate_obfuscation, False),
+            ]),
+            ("Клиенты", False, [
+                ("Добавить клиента", self.add_client, False),
+                ("Список клиентов и статистика", lambda: self.list_clients(detailed=True), False),
+                ("Показать конфиг", self.show_client, False),
+                ("Включить или выключить", self.toggle_client, False),
+                ("Удалить клиента", self.delete_client, True),
+            ]),
+            ("Обслуживание", False, [
+                ("Бекап и восстановление", self.backup_menu, False),
+                ("Журнал (последние 50)", self.show_logs, False),
+                ("Обновление с GitHub", self.self_update, False),
+            ]),
+            ("Опасно", True, [
+                ("Полное удаление конфигурации", self.purge, True),
+            ]),
+        ]
+
+    def _pick(self, count: int) -> int | None:
+        """Читает номер пункта 1..count.
+
+        None — «0», EOF или Ctrl-C: вызывающий цикл трактует как назад/выход.
+        -1 — некорректный ввод; предупреждение уже напечатано, экран нужно
+        перерисовать и спросить снова.
+        """
+        try:
+            choice = input(f"  Выбор [0-{count}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if choice == "0":
+            return None
+        try:
+            index = int(choice)
+        except ValueError:
+            warn(f"нет такого пункта: '{choice}'")
+            return -1
+        if not 1 <= index <= count:
+            warn(f"нет такого пункта: '{choice}'")
+            return -1
+        return index
+
+    def _submenu(
+        self, title: str, items: list[tuple[str, Callable[[], None], bool]]
+    ) -> None:
+        """Цикл подменю раздела. «0» — назад, к списку разделов."""
         while True:
             self._banner()
-            print()
-            print(f"  {W}Сервер{N}")
-            print(f"  {G}1{N}  Создать сервер")
-            print(f"  {G}2{N}  Показать конфигурацию")
-            print(f"  {G}3{N}  Запустить интерфейс")
-            print(f"  {G}4{N}  Остановить интерфейс")
-            print(f"  {G}5{N}  Состояние")
-            print(f"  {G}6{N}  Перегенерировать обфускацию")
-            print()
-            print(f"  {W}Клиенты{N}")
-            print(f"  {G}7{N}  Добавить клиента")
-            print(f"  {G}8{N}  Список клиентов и статистика")
-            print(f"  {G}9{N}  Показать конфиг")
-            print(f"  {G}10{N} Включить или выключить")
-            print(f"  {R}11{N} Удалить клиента")
-            print()
-            print(f"  {W}Обслуживание{N}")
-            print(f"  {G}12{N} Бекап и восстановление")
-            print(f"  {G}13{N} Журнал (последние 50)")
-            print(f"  {R}14{N} Полное удаление конфигурации")
-            print(f"  {G}15{N} Обновление с GitHub")
-            print()
-            print(f"  {D}0{N}  Выход")
+            head(title)
+            for index, (label, _, danger) in enumerate(items, start=1):
+                colour = R if danger else G
+                print(f"  {colour}{index}{N}  {label}")
+            print(f"\n  {D}0{N}  Назад")
             print()
 
-            try:
-                choice = input(f"  Выбор [0-15]: ").strip()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return 0
-
-            actions = {
-                "1": self.create_server,
-                "2": self.show_server,
-                "3": self.start_interface,
-                "4": self.stop_interface,
-                "5": self.show_status,
-                "6": self.regenerate_obfuscation,
-                "7": self.add_client,
-                "8": lambda: self.list_clients(detailed=True),
-                "9": self.show_client,
-                "10": self.toggle_client,
-                "11": self.delete_client,
-                "12": self.backup_menu,
-                "13": self.show_logs,
-                "14": self.purge,
-                "15": self.self_update,
-            }
-
-            if choice == "0":
-                print()
-                info("выход")
-                return 0
-
-            action = actions.get(choice)
-            if action is None:
-                warn(f"нет такого пункта: '{choice}'")
+            choice = self._pick(len(items))
+            if choice is None:
+                return
+            if choice == -1:
                 continue
 
+            _, action, _ = items[choice - 1]
             try:
                 action()
             except KeyboardInterrupt:
                 print()
                 warn("прервано пользователем")
             except Exception as exc:  # меню не имеет права падать
-                logger.exception("Необработанная ошибка в пункте %s", choice)
+                logger.exception("Необработанная ошибка в разделе %s, пункт %s", title, choice)
                 err(f"внутренняя ошибка: {exc}")
                 info(f"подробности в {paths.LOG_FILE}")
 
-            # Без паузы вывод пролетает и сразу перерисовывается главное меню.
+            # Без паузы вывод пролетает и сразу перерисовывается меню.
             pause()
+
+    def run(self) -> int:
+        categories = self._categories()
+        while True:
+            self._banner()
+            print()
+            for index, (title, danger, _) in enumerate(categories, start=1):
+                colour = R if danger else G
+                print(f"  {colour}{index}{N}  {title}")
+            print(f"\n  {D}0{N}  Выход")
+            print()
+
+            choice = self._pick(len(categories))
+            if choice is None:
+                print()
+                info("выход")
+                return 0
+            if choice == -1:
+                continue
+
+            title, _, items = categories[choice - 1]
+            self._submenu(title, items)
 
 
 def main(argv: list[str] | None = None) -> int:

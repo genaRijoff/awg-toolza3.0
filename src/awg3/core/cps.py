@@ -297,7 +297,7 @@ def estimate_size(cps: str) -> int:
     import re
 
     total = 0
-    for match in re.finditer(r"<(b 0x([0-9a-fA-F]*)|([rc]|rc|rd|r) (\d+)|t)>", cps):
+    for match in re.finditer(r"<(b 0x([0-9a-fA-F]*)|(rc|rd|r) (\d+)|t)>", cps):
         token = match.group(0)
         if token.startswith("<b 0x"):
             total += len(match.group(2)) // 2
