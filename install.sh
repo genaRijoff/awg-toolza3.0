@@ -56,6 +56,10 @@ AWG3_BRANCH="${AWG3_BRANCH:-main}"
 # на месте: и установщик, и --update работают с ней, а не с тем, что
 # случайно оказалось рядом со скриптом.
 SRC_DIR="${PREFIX}/src"
+# Свежий установщик, снятый с клона. Нужен, потому что при обновлении из
+# префикса SCRIPT_DIR — это уже установленная (старая) копия, и без него
+# правки самого install.sh никогда не доезжают до сервера.
+FRESH_INSTALLER="/tmp/awg3-installer-fresh.sh"
 GO_MIN="1.21"      # минимум, при котором Go умеет докачивать toolchain
 GO_REQUIRED=""     # заполняется из go.mod в fetch_sources
 BUILD_DIR="/tmp/awg3-build"
@@ -580,6 +584,11 @@ build_backend() {
 sync_sources() {
 	step "Папка проекта"
 
+	# Состояние от прошлого запуска не должно подмениваться под текущий:
+	# иначе установка из локальной папки подхватит установщик, оставшийся
+	# в /tmp от давнего обновления через меню.
+	rm -f "$FRESH_INSTALLER"
+
 	local source=""
 	# Папка рядом со скриптом годится как источник, только если это НЕ сама
 	# установленная копия. Иначе источник и назначение — один каталог,
@@ -598,6 +607,10 @@ sync_sources() {
 			{ err "не удалось склонировать ${AWG3_REPO}"; exit 1; }
 		[[ -d "${clone}/src/awg3" ]] ||
 			{ err "в репозитории нет каталога src/awg3/"; exit 1; }
+		# Установщик из того же коммита, что и код: сохраняем до уборки клона.
+		if [[ -f "${clone}/install.sh" ]]; then
+			cp "${clone}/install.sh" "$FRESH_INSTALLER"
+		fi
 		source="${clone}/src"
 	fi
 
@@ -621,6 +634,34 @@ sync_sources() {
 	fi
 	if [[ -d /tmp/awg3-repo ]]; then rm -rf -- /tmp/awg3-repo; fi
 	ok "папка проекта в ${SRC_DIR}"
+}
+
+# Кладёт установщик в префикс.
+#
+# Через временный файл и mv, а не записью на месте: цель вполне может быть тем
+# самым скриптом, который сейчас выполняется (обновление из меню запускает
+# ${PREFIX}/install.sh). Bash дочитывает скрипт по ходу выполнения, поэтому
+# перезапись на месте способна порвать текущий запуск на середине, а
+# переименование лишь меняет запись в каталоге — старый inode доживёт до конца.
+save_installer() {
+	local src="$1" dest="${PREFIX}/install.sh"
+
+	if [[ "$(readlink -f "$src")" == "$(readlink -f "$dest")" ]]; then
+		ok "установщик уже на месте -> ${dest}"
+		return 0
+	fi
+
+	local tmp="${dest}.new.$$"
+	if ! install -m 0755 "$src" "$tmp"; then
+		err "не удалось записать ${tmp}"
+		return 1
+	fi
+	if ! mv -f "$tmp" "$dest"; then
+		err "не удалось заменить ${dest}"
+		rm -f "$tmp"
+		return 1
+	fi
+	ok "установщик сохранён -> ${dest}"
 }
 
 install_python() {
@@ -663,9 +704,12 @@ EOF
 
 	# Копия установщика рядом с проектом: пункт «Обновление» в меню запускает
 	# именно её, без повторного curl. Если копии нет — меню сходит на GitHub.
-	if [[ -f "${SCRIPT_DIR}/install.sh" ]]; then
-		install -m 0755 "${SCRIPT_DIR}/install.sh" "${PREFIX}/install.sh"
-		ok "установщик сохранён -> ${PREFIX}/install.sh"
+	# Свежая из клона в приоритете: при обновлении из префикса SCRIPT_DIR — это
+	# та самая старая копия, и без этого install.sh обновлялся бы сам в себя.
+	if [[ -f "$FRESH_INSTALLER" ]]; then
+		save_installer "$FRESH_INSTALLER"
+	elif [[ -f "${SCRIPT_DIR}/install.sh" ]]; then
+		save_installer "${SCRIPT_DIR}/install.sh"
 	fi
 
 	touch "$LOG_FILE"; chmod 640 "$LOG_FILE"
