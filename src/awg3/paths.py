@@ -52,7 +52,7 @@ IPTABLES_TAG = "awg3"
 
 # Откуда обновляться. Копия установщика лежит рядом с проектом, но если её
 # нет (например, папку восстановили из бекапа), берём с GitHub.
-REPO_URL = os.environ.get("AWG3_REPO", "https://github.com/pumbaX/awg-toolza3.0")
+REPO_URL = os.environ.get("AWG3_REPO", "https://github.com/genaRijoff/awg-toolza3.0")
 REPO_BRANCH = os.environ.get("AWG3_BRANCH", "main")
 INSTALLER = PREFIX / "install.sh"
 

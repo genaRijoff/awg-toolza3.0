@@ -18,7 +18,7 @@
 ## Установка
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/pumbaX/awg-toolza3.0/main/install.sh) --install
+bash <(curl -fsSL https://raw.githubusercontent.com/genaRijoff/awg-toolza3.0/main/install.sh) --install
 sudo awg3-probe   # проверить, что бинарь умеет AWG 3
 sudo awg3         # меню
 ```
@@ -29,7 +29,7 @@ Ubuntu 24.04+ или Debian 12+, KVM, root.
 
 ```
 ╔════════════════════════════════════════════════════╗
-║ AWG3 v0.31.3 — AmneziaWG 3.0 (amneziawg-go)        ║
+║ AWG3 v0.31.4 — AmneziaWG 3.0 (amneziawg-go)        ║
 ╚════════════════════════════════════════════════════╝
   Сервер    : работает  awg1:60927 pro/AWG3, клиентов 1
 
@@ -84,11 +84,12 @@ handshake initiation, и соединение не поднимается без
 
 ```
 install.sh   единственный скрипт
-src/         пакет, тесты, подробная документация (src/DOCS.md)
+src/         пакет и тесты
 ```
 
 `install.sh` кладёт `src/` в `/opt/awg3/src` и работает оттуда.
-`--update` обновляет папку через `git fetch`.
+`--update` берёт свежий код из папки рядом со скриптом, а если запущен из
+самого `/opt/awg3` — поверхностным клоном репозитория.
 
 ## Тесты
 

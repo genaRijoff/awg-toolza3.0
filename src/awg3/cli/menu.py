@@ -1111,6 +1111,10 @@ class Menu:
             return None
         if choice == "0":
             return None
+        # Пустой Enter — промах, а не ошибка ввода: молча перерисовываем экран.
+        # Ругаться на него значит обвинять человека в том, что он ничего не сделал.
+        if not choice:
+            return -1
         try:
             index = int(choice)
         except ValueError:

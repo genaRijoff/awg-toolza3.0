@@ -50,7 +50,7 @@ RESERVED_ENV="${CONF_DIR}/reserved.env"
 GO_REPO="https://github.com/amnezia-vpn/amneziawg-go"
 # Репозиторий самой тулзы. Нужен для однокомандной установки, когда скрипт
 # скачан отдельно и пакета awg3/ рядом нет.
-AWG3_REPO="${AWG3_REPO:-https://github.com/pumbaX/awg-toolza3.0}"
+AWG3_REPO="${AWG3_REPO:-https://github.com/genaRijoff/awg-toolza3.0}"
 AWG3_BRANCH="${AWG3_BRANCH:-main}"
 # Папка проекта на сервере. Скачивается один раз и дальше обновляется
 # на месте: и установщик, и --update работают с ней, а не с тем, что
@@ -581,12 +581,14 @@ sync_sources() {
 	step "Папка проекта"
 
 	local source=""
-	if [[ -d "${SCRIPT_DIR}/src/awg3" ]]; then
+	# Папка рядом со скриптом годится как источник, только если это НЕ сама
+	# установленная копия. Иначе источник и назначение — один каталог,
+	# копировать нечего, и обновление кода молча не происходит: ровно так
+	# «Обновление с GitHub» и `--update` из ${PREFIX} пересобирали бинарь,
+	# оставляя прежнее Python-ядро. В этом случае тянем из репозитория.
+	if [[ -d "${SCRIPT_DIR}/src/awg3" ]] &&
+		[[ "$(cd "${SCRIPT_DIR}/src" && pwd)" != "$SRC_DIR" ]]; then
 		source="${SCRIPT_DIR}/src"
-		if [[ "$(cd "$source" && pwd)" == "$SRC_DIR" ]]; then
-			ok "работаю прямо в ${SRC_DIR}"
-			return 0
-		fi
 		info "беру из ${source}"
 	else
 		info "тяну ${AWG3_REPO} (${AWG3_BRANCH})"
@@ -603,6 +605,16 @@ sync_sources() {
 	# Старую папку сносим целиком: остатки прошлых версий, включая случайно
 	# оставшийся .git, не должны пережить обновление.
 	safe_rm_tree "$SRC_DIR" 2>/dev/null || true
+	# Очистка могла не пройти: safe_rm_tree пускает только /opt/awg3 и /etc/awg3,
+	# а AWG3_PREFIX разрешено переопределять. Молча продолжать нельзя — `cp -r`
+	# в существующий каталог вложит источник внутрь и даст ${SRC_DIR}/src,
+	# после чего install_python не найдёт awg3/ и установка развалится позже
+	# и в другом месте. Лучше остановиться здесь и сказать почему.
+	if [[ -e "$SRC_DIR" ]]; then
+		err "не удалось очистить ${SRC_DIR}"
+		err "снеси каталог вручную либо оставь AWG3_PREFIX в /opt/awg3"
+		exit 1
+	fi
 	cp -r "$source" "$SRC_DIR"
 	if [[ -d "${SRC_DIR}/.git" ]]; then
 		safe_rm_tree "${SRC_DIR}/.git" 2>/dev/null || rm -rf -- "${SRC_DIR}/.git"
